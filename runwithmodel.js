@@ -145,8 +145,10 @@
     let urls = {
         "UE": "https://www.fab.com/i/listings/search?channels=unreal-engine&is_free=1&sort_by=-createdAt",
         "Unity": "https://www.fab.com/i/listings/search?channels=unity&is_free=1&sort_by=-createdAt",
-        "UEFN": "https://www.fab.com/i/listings/search?channels=uefn&is_free=1&sort_by=-createdAt",
-        "Quixel": "https://www.fab.com/i/listings/search?currency=USD&seller=Quixel&sort_by=listingTypeWeight"
+        //"UEFN": "https://www.fab.com/i/listings/search?channels=uefn&is_free=1&sort_by=-createdAt",
+        "Quixel": "https://www.fab.com/i/listings/search?currency=USD&seller=Quixel&sort_by=listingTypeWeight",        
+        "Fbx": "https://www.fab.com/i/listings/search?asset_formats=fbx&is_free=1&sort_by=-createdAt",
+        "Blender": "https://www.fab.com/i/listings/search?asset_formats=blender&is_free=1&sort_by=-createdAt"
         //这里如果仅仅只需要其中一种类型资源，比如只需要UE的，那可以只保留UE的链接
     }
     const mainTasks = Object.entries(urls).map(async ([name, url]) => {
