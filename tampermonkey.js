@@ -1,247 +1,197 @@
-// ==UserScript==
-// @name         UnrealFabAssistant
-// @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  UnrealFabAssistan油猴脚本
-// @author       https://github.com/RyensX/UnrealFabAssistant
-// @match        https://www.fab.com/
-// @match        https://www.fab.com/*-*/
-// @grant        none
-// @license      GPL-3.0
-// ==/UserScript==
+((async (fastMode /** 快速模式：以时间降序查询物品，若超过3页都没有能添加的物品，则认为该分类已经没有新增的 */) => {
 
-(function () {
-    'use strict';
-
-    /* 样式配置 */
-    const STYLE_CONFIG = {
-        container: {
-            width: '380px',
-            height: '300px',
-            position: 'fixed',
-            bottom: '20px',
-            right: '20px',
-            background: 'rgba(30, 30, 30, 0.95)',
-            color: '#e0e0e0',
-            fontFamily: 'monospace, "Courier New"',
-            fontSize: '13px',
-            borderRadius: '6px',
-            boxShadow: '0 0 15px rgba(0,0,0,0.6)',
-            zIndex: '2147483647',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column'
-        },
-        logTypes: {
-            log: { color: '#4CAF50', icon: '●' },
-            info: { color: '#2196F3', icon: 'ℹ' },
-            warn: { color: '#FFC107', icon: '⚠' },
-            error: { color: '#F44336', icon: '✖' },
-            debug: { color: '#9C27B0', icon: '⚙' }
-        }
-    };
-
-    /* 初始化日志容器 */
-    const logContainer = document.createElement('div');
-    Object.assign(logContainer.style, STYLE_CONFIG.container);
-    logContainer.id = 'tm-console-viewer';
-    document.body.appendChild(logContainer);
-
-    /* 创建控制栏 */
-    const controlBar = document.createElement('div');
-    controlBar.style.display = 'flex';
-    controlBar.style.justifyContent = 'space-between';
-    controlBar.style.alignItems = 'center';
-    controlBar.style.gap = '10px';
-    controlBar.style.padding = '8px';
-    controlBar.style.borderBottom = '1px solid #444';
-    controlBar.style.background = 'rgba(30, 30, 30, 0.95)';
-    controlBar.style.flexShrink = '0';
-
-    const title = document.createElement('div');
-    title.textContent = 'UnrealFabAssistant';
-    title.style.color = '#fff';
-    title.style.fontWeight = 'bold';
-    title.style.marginRight = 'auto';
-
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '×';
-    closeBtn.style.cssText = `
-        padding: 0 8px;
-        background: transparent;
-        border: none;
-        color: #fff;
-        font-size: 20px;
-        line-height: 1;
-        cursor: pointer;
-        transition: opacity 0.2s;
-    `;
-    closeBtn.onclick = () => logContainer.remove();
-    closeBtn.onmouseover = () => closeBtn.style.opacity = '0.8';
-    closeBtn.onmouseout = () => closeBtn.style.opacity = '1';
-
-    controlBar.append(title, closeBtn);
-    logContainer.appendChild(controlBar);
-
-    /* 创建日志内容区域 */
-    const logContent = document.createElement('div');
-    logContent.style.overflowY = 'auto';
-    logContent.style.flexGrow = '1';
-    logContent.style.padding = '0 10px';
-    logContent.style.position = 'relative'; // 新增定位上下文
-    logContainer.appendChild(logContent);
-
-    /* 添加日志区域遮罩层 */
-    const overlay = document.createElement('div');
-    Object.assign(overlay.style, {
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        width: '100%',
-        height: '100%',
-        backgroundColor: 'rgba(0, 0, 0, 0.9)',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        backdropFilter: 'blur(2px)',
-        zIndex: '1' // 确保在日志内容之上
-    });
-
-    const startButton = document.createElement('button');
-    startButton.textContent = 'Start work';
-    startButton.style.cssText = `
-        padding: 12px 24px;
-        background: #4CAF50;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 14px;
-        font-weight: bold;
-        transition: transform 0.1s, background 0.3s;
-    `;
-
-    let isStart = false
-    // 点击开始
-    startButton.addEventListener('click', () => {
-        overlay.remove();
-        fetch('https://raw.githubusercontent.com/RyensX/UnrealFabAssistant/refs/heads/main/run.js').then(r => r.text()).then(t => document.head.append(Object.assign(document.createElement('script'), { textContent: t })))
-        isStart = true
-    });
-
-    // 按钮交互效果
-    startButton.addEventListener('mouseover', () => {
-        startButton.style.background = '#45a049';
-    });
-    startButton.addEventListener('mouseout', () => {
-        startButton.style.background = '#4CAF50';
-    });
-    startButton.addEventListener('mousedown', () => {
-        startButton.style.transform = 'scale(0.95)';
-    });
-    startButton.addEventListener('mouseup', () => {
-        startButton.style.transform = 'scale(1)';
-    });
-
-    overlay.appendChild(startButton);
-    logContent.appendChild(overlay);
-
-    /* 保存原生方法 */
-    const nativeConsole = {
-        log: console.log,
-        info: console.info,
-        warn: console.warn,
-        error: console.error,
-        debug: console.debug
-    };
-
-    /* 重写控制台方法 */
-    Object.keys(STYLE_CONFIG.logTypes).forEach(type => {
-        console[type] = function (...args) {
-            nativeConsole[type].apply(console, args);
-            appendLog(type, args);
-        };
-    });
-
-    /* 日志处理函数 */
-    function appendLog(type, args) {
-        if (!isStart)
-            return
-        const logEntry = document.createElement('div');
-        logEntry.className = `log-entry log-${type}`;
-        logEntry.style.padding = '6px 0';
-        logEntry.style.borderBottom = '1px solid #373737';
-        logEntry.style.display = 'flex';
-        logEntry.style.alignItems = 'flex-start';
-        logEntry.style.gap = '8px';
-
-        // 类型图标
-        const typeIcon = document.createElement('span');
-        typeIcon.textContent = STYLE_CONFIG.logTypes[type].icon;
-        typeIcon.style.color = STYLE_CONFIG.logTypes[type].color;
-        typeIcon.style.marginRight = '8px';
-        typeIcon.style.flexShrink = '0';
-
-        // 内容处理
-        const contentSpan = document.createElement('span');
-        contentSpan.style.flex = '1';
-        contentSpan.style.overflowWrap = 'anywhere';
-        contentSpan.style.textAlign = 'left';
-
-        contentSpan.append(...args.map(arg => {
-            const elem = document.createElement('span');
-            elem.style.wordBreak = 'break-all';
-
-            if (typeof arg === 'object' && arg !== null) {
-                try {
-                    elem.textContent = JSON.stringify(arg, null, 2);
-                } catch {
-                    elem.textContent = arg.toString();
-                }
-                elem.style.color = '#FF9800';
-            } else {
-                elem.textContent = arg;
-                elem.style.color = '#BDBDBD';
-            }
-            return elem;
-        }));
-
-        logEntry.append(typeIcon, contentSpan);
-        logContent.appendChild(logEntry);
-        logContent.scrollTop = logContent.scrollHeight;
+    const getCookie = (name) => {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
     }
 
-    /* 样式隔离 */
-    const style = document.createElement('style');
-    style.textContent = `
-        #tm-console-viewer * {
-            box-sizing: border-box;
-            margin: 0;
-            white-space: pre-wrap;
-        }
-        #tm-console-viewer button:active {
-            transform: translateY(1px);
-        }
+    /**
+     * 获取物品
+     * 
+     * @returns [next,[uid]]
+     */
+    const getItemsApi = async (cookies, next, url_base) => {
+        //const response = await fetch(`&cursor=${next}`, {
+        const response = await fetch(`${url_base}&cursor=${next}`, {
+            "headers": {
+                "accept": "application/json, text/plain, */*",
+                "cookie": cookies
+            },
+            "method": "GET",
+        })
+        let data = await response.json()
+        let nextPage = data.cursors?.next ?? null
+        let uidList = data.results?.map(result => result.uid) ?? []
+        //console.log(data.cursors.previous)
+        //console.log(`测试物品数据: ${JSON.stringify(data)}`)
+        return [nextPage, uidList]
+    }
 
-        /* 自定义滚动条 */
-        #tm-console-viewer > div:last-child::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
+    /**
+     * 添加到库
+     */
+    const addLibApi = async (cookies, token, uid, offerId) => {
+        const response = await fetch(`https://www.fab.com/i/listings/${uid}/add-to-library`, {
+            "headers": {
+                "Cookies": cookies,
+                "accept": "application/json, text/plain, */*",
+                "accept-language": "en",
+                "content-type": "multipart/form-data; boundary=----WebKitFormBoundary1",
+                "priority": "u=1, i",
+                "sec-ch-ua": "\"Google Chrome\";v=\"135\", \"Not-A.Brand\";v=\"8\", \"Chromium\";v=\"135\"",
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": "\"Windows\"",
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-origin",
+                "x-csrftoken": token,
+                "x-requested-with": "XMLHttpRequest"
+            },
+            "referrer": `https://www.fab.com/zh-cn/listings/${uid}`,
+            "referrerPolicy": "strict-origin-when-cross-origin",
+            "body": `------WebKitFormBoundary1\r\nContent-Disposition: form-data; name=\"offer_id\"\r\n\r\n${offerId}\r\n------WebKitFormBoundary1--\r\n`,
+            "method": "POST",
+            "mode": "cors",
+            "credentials": "include"
+        });
+        return response.status == 204
+    }
+
+    /**
+     * 获取详细信息，主要要取得offerId
+     */
+    const listingsApi = async (cookies, token, uid) => {
+        const response = await fetch(`https://www.fab.com/i/listings/${uid}`, {
+            "headers": {
+                "accept": "application/json, text/plain, */*",
+                "cookie": cookies,
+                "referer": "https://www.fab.com/",
+                "x-csrftoken": token
+            },
+            "method": "GET",
+        })
+        let data = await response.json()
+        let title = data.title
+        let offerId = null
+        let type = null
+        //尽量专业版
+        if (data.licenses)
+            for (licenseInfo of data.licenses) {
+                if (licenseInfo.priceTier.price == 0.0) {
+                    offerId = licenseInfo.offerId
+                    type = licenseInfo.slug
+                    if (licenseInfo.slug == "professional") {
+                        break
+                    }
+                }
+            }
+        //console.log(`测试数据: ${JSON.stringify(data)}`)
+        return [offerId, type, title]
+    }
+
+
+    /**
+     * 获取许可状态
+     */
+    const listingsStateApi = async (cookies, token, uids) => {
+        if (!Array.isArray(uids) || !uids.length)
+            return {}
+        let uidParams = uids.map(uid => `listing_ids=${uid}`).join("&")
+        const response = await fetch(`https://www.fab.com/i/users/me/listings-states?${uidParams}`, {
+            "headers": {
+                "cookie": cookies,
+                "accept": "application/json, text/plain, */*",
+                "x-csrftoken": token,
+                "x-requested-with": "XMLHttpRequest"
+            },
+            "referrer": "https://www.fab.com/",
+            "referrerPolicy": "strict-origin-when-cross-origin",
+            "body": null,
+            "method": "GET",
+            "mode": "cors",
+            "credentials": "include"
+        })
+        let data = await response.json()
+        return data.reduce((acc, item) => {
+            acc[item.uid] = item.acquired;
+            return acc;
+        }, {})
+    }
+
+    console.log("⭐ UnrealFabAssistant: Automatically add all free resources from Fab to your account")
+    console.log("⭐ Powered by https://github.com/RyensX/UnrealFabAssistant")
+
+    // 获取cookies和xtoken
+    console.log("-> Checking User Info...")
+    let csrftoken = ""
+    let cookies = document.cookie
+    try {
+        csrftoken = getCookie("fab_csrftoken") ?? "{}"
+        if (!csrftoken) {
+            return console.error("-> Error: cannot find csrftoken. Please login again.")
         }
-        #tm-console-viewer > div:last-child::-webkit-scrollbar-track {
-            background: rgba(20, 20, 20, 0.3);
-            border-radius: 4px;
-        }
-        #tm-console-viewer > div:last-child::-webkit-scrollbar-thumb {
-            background: rgba(100, 100, 100, 0.5);
-            border-radius: 4px;
-        }
-        #tm-console-viewer > div:last-child::-webkit-scrollbar-thumb:hover {
-            background: rgba(120, 120, 120, 0.6);
-        }
-        #tm-console-viewer > div:last-child::-webkit-scrollbar-corner {
-            background: transparent;
-        }
-    `;
-    document.head.appendChild(style);
-})();
+    } catch (_) {
+        return console.error("-> Error: cannot find csrftoken. Please login again.")
+    }
+    console.log(`cookies=${cookies}`)
+    console.log(`csrftoken=${csrftoken}`)
+
+    console.log("-> Start Process Items...")
+    let totalCount = 0
+    const MAX_EMPTY_PAGE = 3
+    let countMap = {}
+
+    let urls = {
+        "UE": "https://www.fab.com/i/listings/search?channels=unreal-engine&is_free=1&sort_by=-createdAt",
+        "Unity": "https://www.fab.com/i/listings/search?channels=unity&is_free=1&sort_by=-createdAt",
+        "UEFN": "https://www.fab.com/i/listings/search?channels=uefn&is_free=1&sort_by=-createdAt",
+        "Quixel": "https://www.fab.com/i/listings/search?currency=USD&seller=Quixel&sort_by=listingTypeWeight",
+        "Fbx": "https://www.fab.com/i/listings/search?asset_formats=fbx&is_free=1&sort_by=-createdAt",
+        //这里如果仅仅只需要其中一种类型资源，比如只需要UE的，那可以只保留UE的链接
+    }
+    const mainTasks = Object.entries(urls).map(async ([name, url]) => {
+        console.log(`start by name=${name} url=${url}`)
+        let nextPage = null
+        let currentPageIndex = 1
+        let currentCount = 0
+        let lastPage = 0
+        do {
+            lastPage++
+            const page = await getItemsApi(cookies, nextPage, url)
+            console.log(`${name} page=${currentPageIndex++}(${page[0]}) ,count=${page[1].length}`)
+            nextPage = page[0]
+            //先获取许可状态
+            const states = await listingsStateApi(cookies, csrftoken, page[1])
+            //获取详情
+            const tasks = page[1].map(async (uid) => {
+                //已入库的不再重复。不过如果需要自动更新许可类型（尽量换成专业版）可以把这个限制去掉
+                if (states[uid] == false) {
+                    const info = await listingsApi(cookies, csrftoken, uid)
+                    const [offerId, type, title] = info
+                    if (offerId != null) {
+                        console.log(`No.${currentCount} ${name} Item: name=${title} , offerId=${offerId}`)
+                        //入库
+                        const result = await addLibApi(cookies, csrftoken, uid, offerId)
+                        console.log(`addLib No.${currentCount} ${title} from ${name} result=${result} page=${page[0]} type=${type}`)
+                        if (result) {
+                            lastPage = 0
+                            currentCount++
+                        }
+                    }
+                }
+            })
+            await Promise.allSettled(tasks)
+            //break //测试用
+        } while ((!fastMode || lastPage < MAX_EMPTY_PAGE) && nextPage != null && nextPage != "")
+        console.log(`✅ ${name} done! ${currentCount} items added.`)
+        totalCount += currentCount
+        countMap[name] = currentCount
+    })
+    await Promise.allSettled(mainTasks)
+
+    let countDetail = totalCount > 0 ?
+        "(" + Object.entries(countMap).map(([key, value]) => `${key}:${value}`).join(" ") + ")"
+        : ""
+    console.log(`\n✅ All done! ${totalCount}${countDetail} items added.`)
+})(console.fastMode ?? true))
