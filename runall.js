@@ -177,6 +177,8 @@
                 }
             })
             await Promise.allSettled(tasks)
+            //等待10毫秒防止429
+            await new Promise(resolve => setTimeout(resolve, 10));
             //break //测试用
         } while ((!fastMode || lastPage < MAX_EMPTY_PAGE) && nextPage != null && nextPage != "")
         console.log(`✅ ${name} done! ${currentCount} items added.`)
